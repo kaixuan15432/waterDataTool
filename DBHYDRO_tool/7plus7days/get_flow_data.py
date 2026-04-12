@@ -60,6 +60,46 @@ def parse_timeseries_data(api_data):
 def get_hour_key(dt):
     return dt.strftime("%Y-%m-%dT%H:00:00")
 
+def generate_chart(station_name, values, temp_dir):
+    timestamps = []
+    flow_values = []
+    for v in values:
+        ts_val = v["x"]
+        if isinstance(ts_val, int):
+            dt = datetime.utcfromtimestamp(ts_val / 1000)
+        else:
+            ts = str(ts_val)
+            dt = datetime.fromisoformat(ts.replace("Z", "").replace("+00:00", ""))
+        timestamps.append(dt)
+        
+        y_val = v.get("y")
+        if y_val is None:
+            y_str = v.get("yStr")
+            if y_str:
+                try:
+                    cfs = max(0, float(y_str))
+                except:
+                    cfs = 0
+            else:
+                cfs = 0
+        else:
+            cfs = max(0, float(y_val))
+        flow_values.append(convert_cfs_to_cms(cfs))
+    
+    if not timestamps:
+        return
+    
+    plt.figure(figsize=(12, 6))
+    plt.plot(timestamps, flow_values, linewidth=0.8)
+    plt.xlabel('Time')
+    plt.ylabel('Flow (CMS)')
+    plt.title(f'{station_name} - Flow Data')
+    plt.grid(True, alpha=0.3)
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.savefig(os.path.join(temp_dir, f"{station_name}.png"), dpi=100)
+    plt.close()
+
 def main():
     generate_png = "--png" in sys.argv
     
@@ -74,46 +114,6 @@ def main():
         hour_buckets[key] = {"data": {s["name"]: [] for s in STATIONS}}
         current += timedelta(hours=1)
     
-    def generate_chart(station_name, values):
-        timestamps = []
-        flow_values = []
-        for v in values:
-            ts_val = v["x"]
-            if isinstance(ts_val, int):
-                dt = datetime.utcfromtimestamp(ts_val / 1000)
-            else:
-                ts = str(ts_val)
-                dt = datetime.fromisoformat(ts.replace("Z", "").replace("+00:00", ""))
-            timestamps.append(dt)
-            
-            y_val = v.get("y")
-            if y_val is None:
-                y_str = v.get("yStr")
-                if y_str:
-                    try:
-                        cfs = float(y_str)
-                    except:
-                        cfs = 0
-                else:
-                    cfs = 0
-            else:
-                cfs = float(y_val)
-            flow_values.append(convert_cfs_to_cms(cfs))
-        
-        if not timestamps:
-            return
-        
-        plt.figure(figsize=(12, 6))
-        plt.plot(timestamps, flow_values, linewidth=0.8)
-        plt.xlabel('Time')
-        plt.ylabel('Flow (CMS)')
-        plt.title(f'{station_name} - Flow Data')
-        plt.grid(True, alpha=0.3)
-        plt.xticks(rotation=45)
-        plt.tight_layout()
-        plt.savefig(os.path.join(temp_dir, f"{station_name}.png"), dpi=100)
-        plt.close()
-    
     all_data = {}
     temp_dir = os.path.join(SCRIPT_DIR, "temp")
     os.makedirs(temp_dir, exist_ok=True)
@@ -125,7 +125,7 @@ def main():
             values = parse_timeseries_data(api_data)
             all_data[station["name"]] = values
             if generate_png:
-                generate_chart(station["name"], values)
+                generate_chart(station["name"], values, temp_dir)
             print(f"  Got {len(values)} values")
         else:
             all_data[station["name"]] = []
@@ -148,14 +148,13 @@ def main():
                 y_str = v.get("yStr")
                 if y_str:
                     try:
-                        cfs = float(y_str)
+                        cfs = max(0, float(y_str))
                     except:
-                        continue
+                        cfs = 0
                 else:
-                    continue
+                    cfs = 0
             else:
-                cfs = float(y_val)
-            
+                cfs = max(0, float(y_val))
             cms = convert_cfs_to_cms(cfs)
             
             key = get_hour_key(dt)
