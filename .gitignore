@@ -1,0 +1,8 @@
+.DS_Store
+__pycache__/
+*.pyc
+flow_output.txt
+secoora_output.txt
+temp/
+*.json
+*.png
