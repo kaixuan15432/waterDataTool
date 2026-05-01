@@ -6,3 +6,4 @@ secoora_output.txt
 temp/
 *.json
 *.png
+!DBHYDRO_tool/7plus7days/image/*.png

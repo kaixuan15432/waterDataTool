@@ -1,18 +1,42 @@
-# get_flow_data.py
+# 7plus7days - Flow Data Tool
 
-Fetch flow data from SFWMD API and output to flow_output.txt.
+Fetch flow data from SFWMD DBHYDRO API and generate hourly averaged output.
 
-## Usage
+## Scripts
+
+### get_flow_data.py
+
+Fetch flow data from API and output to `flow_output.txt`.
 
 ```bash
-python3 get_flow_data.py
-python3 get_flow_data.py --png # Also generate PNG charts
+python3 get_flow_data.py                # Default: 61 days
+python3 get_flow_data.py --days 7       # Custom days
+python3 get_flow_data.py --days 30 --png # 30 days + PNG charts in temp/
 ```
+
+#### Parameters
+
+- `--days N` - Number of days to look back (default: 61)
+- `--png` - Generate PNG charts in `temp/` folder
+
+### image/plot_flow.py
+
+Read `flow_output.txt` and generate per-station flow charts in `image/` folder.
+
+```bash
+python3 image/plot_flow.py              # Default: 61 days
+python3 image/plot_flow.py --days 7     # Match the days used in get_flow_data.py
+```
+
+#### Parameters
+
+- `--days N` - Must match the `--days` value used in `get_flow_data.py` for correct time axis
 
 ## Output
 
 - `flow_output.txt` - Flow data text file (hourly averaged, EDT timezone)
-- `temp/` - PNG charts folder (only generated when using --png flag)
+- `image/` - Per-station PNG flow charts
+- `temp/` - PNG charts folder (only when using `--png` flag)
 
 ## Data Source
 
@@ -22,10 +46,11 @@ Station configuration is read from `station_Flow_r1.bp`, containing 23 flow stat
 
 ## Time Range
 
-- Fetches data for the 61 days prior to current time
+- Default fetches data for the 61 days prior to current time
 - API queries use `startDate/endDate` parameters for historical data access
 - EDT timezone (UTC-4): API returns UTC timestamps, converted to EDT for output
-  - EDT 00:00 = UTC 20:00 (previous day), so API query starts 1 day earlier to cover EDT midnight
+- EDT 00:00 = UTC 20:00 (previous day), so API query starts 1 day earlier to cover EDT midnight
+- After current time, 7 days of zero-padding is appended for forecast gap
 
 ## Data Processing
 
