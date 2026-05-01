@@ -29,8 +29,10 @@ def load_stations_from_file(filepath):
 
 STATIONS = load_stations_from_file(os.path.join(SCRIPT_DIR, "station_Flow_r1.bp"))
 
-def fetch_api_data(api_id):
-    url = f"{API_BASE}?timeseriesIds={api_id}&reportType=timeseries&format=plot&period=1week"
+def fetch_api_data(api_id, start_utc, end_utc):
+    start_str = start_utc.strftime("%Y%m%d")
+    end_str = end_utc.strftime("%Y%m%d")
+    url = f"{API_BASE}?timeseriesIds={api_id}&reportType=timeseries&format=plot&startDate={start_str}&endDate={end_str}"
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
@@ -102,34 +104,42 @@ def generate_chart(station_name, values, temp_dir):
 
 def main():
     generate_png = "--png" in sys.argv
-    
+
+    EDT_OFFSET = 4
+
     now = datetime.now()
-    end_date = now.replace(hour=23, minute=0, second=0, microsecond=0)
-    start_date = (now - timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0)
-    
+    end_edt = now.replace(hour=23, minute=0, second=0, microsecond=0)
+    start_edt = (now - timedelta(days=61)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    start_utc = start_edt - timedelta(hours=EDT_OFFSET)
+    end_utc = end_edt - timedelta(hours=EDT_OFFSET)
+
+    print(f"EDT range: {start_edt.strftime('%Y-%m-%d %H:%M')} to {end_edt.strftime('%Y-%m-%d %H:%M')}")
+    print(f"UTC range: {start_utc.strftime('%Y-%m-%d %H:%M')} to {end_utc.strftime('%Y-%m-%d %H:%M')}")
+
     hour_buckets = {}
-    current = start_date
-    while current <= end_date:
+    current = start_utc
+    while current <= end_utc:
         key = get_hour_key(current)
         hour_buckets[key] = {"data": {s["name"]: [] for s in STATIONS}}
         current += timedelta(hours=1)
-    
+
     all_data = {}
     temp_dir = os.path.join(SCRIPT_DIR, "temp")
     os.makedirs(temp_dir, exist_ok=True)
-    
+
     for station in STATIONS:
         print(f"Fetching {station['name']} ({station['apiId']})...")
-        api_data = fetch_api_data(station["apiId"])
+        api_data = fetch_api_data(station["apiId"], start_utc, end_utc)
         if api_data:
             values = parse_timeseries_data(api_data)
             all_data[station["name"]] = values
             if generate_png:
                 generate_chart(station["name"], values, temp_dir)
-            print(f"  Got {len(values)} values")
+            print(f" Got {len(values)} values")
         else:
             all_data[station["name"]] = []
-    
+
     for station_name, values in all_data.items():
         for v in values:
             ts_val = v["x"]
@@ -139,10 +149,10 @@ def main():
                 ts = str(ts_val)
                 dt = datetime.fromisoformat(ts.replace("Z", "").replace("+00:00", ""))
             dt = dt.replace(minute=0, second=0, microsecond=0)
-            
-            if dt < start_date or dt > end_date:
+
+            if dt < start_utc or dt > end_utc:
                 continue
-            
+
             y_val = v.get("y")
             if y_val is None:
                 y_str = v.get("yStr")
@@ -156,24 +166,25 @@ def main():
             else:
                 cfs = max(0, float(y_val))
             cms = convert_cfs_to_cms(cfs)
-            
+
             key = get_hour_key(dt)
             if key in hour_buckets:
                 hour_buckets[key]["data"][station_name].append(cms)
-    
+
     output_lines = []
     for hour_key in sorted(hour_buckets.keys()):
         dt = datetime.fromisoformat(hour_key)
         hour_num = dt.hour
-        if dt.date() == start_date.date() and hour_num < start_date.hour:
+        if dt.date() == start_utc.date() and hour_num < start_utc.hour:
             continue
-        if dt.date() == end_date.date() and hour_num > end_date.hour:
+        if dt.date() == end_utc.date() and hour_num > end_utc.hour:
             continue
-        
-        total_seconds = int((dt - start_date).total_seconds())
-        
+
+        dt_edt = dt + timedelta(hours=EDT_OFFSET)
+        total_seconds = int((dt_edt - start_edt).total_seconds())
+
         line = f"{total_seconds:08d}"
-        
+
         for station in STATIONS:
             vals = hour_buckets[hour_key]["data"].get(station["name"], [])
             if vals:
@@ -184,17 +195,17 @@ def main():
                 line += " 0.00"
             else:
                 line += f" {avg_val:.2f}"
-        
+
         output_lines.append(line)
-    
-    for i in range(8 * 24):
+
+    for i in range(62 * 24):
         total_seconds += 3600
         line = f"{total_seconds:08d}" + " 0.00" * len(STATIONS)
         output_lines.append(line)
-    
+
     with open(os.path.join(SCRIPT_DIR, "flow_output.txt"), "w") as f:
         f.write("\n".join(output_lines))
-    
+
     print(f"Output written to flow_output.txt ({len(output_lines)} lines)")
 
 if __name__ == "__main__":
