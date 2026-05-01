@@ -4,6 +4,7 @@ import json
 import ssl
 import os
 import sys
+import argparse
 from datetime import datetime, timedelta
 import matplotlib
 matplotlib.use('Agg')
@@ -103,13 +104,16 @@ def generate_chart(station_name, values, temp_dir):
     plt.close()
 
 def main():
-    generate_png = "--png" in sys.argv
+    parser = argparse.ArgumentParser(description="Fetch flow data from SFWMD DBHYDRO API")
+    parser.add_argument("--days", type=int, default=61, help="Number of days to look back (default: 61)")
+    parser.add_argument("--png", action="store_true", help="Generate PNG charts")
+    args = parser.parse_args()
 
     EDT_OFFSET = 4
 
     now = datetime.now()
     end_edt = now.replace(hour=23, minute=0, second=0, microsecond=0)
-    start_edt = (now - timedelta(days=61)).replace(hour=0, minute=0, second=0, microsecond=0)
+    start_edt = (now - timedelta(days=args.days)).replace(hour=0, minute=0, second=0, microsecond=0)
 
     start_utc = start_edt - timedelta(hours=EDT_OFFSET)
     end_utc = end_edt - timedelta(hours=EDT_OFFSET)
@@ -134,7 +138,7 @@ def main():
         if api_data:
             values = parse_timeseries_data(api_data)
             all_data[station["name"]] = values
-            if generate_png:
+            if args.png:
                 generate_chart(station["name"], values, temp_dir)
             print(f" Got {len(values)} values")
         else:
@@ -198,7 +202,7 @@ def main():
 
         output_lines.append(line)
 
-    for i in range(62 * 24):
+    for i in range(7 * 24):
         total_seconds += 3600
         line = f"{total_seconds:08d}" + " 0.00" * len(STATIONS)
         output_lines.append(line)

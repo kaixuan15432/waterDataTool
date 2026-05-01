@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import sys
+import argparse
 from datetime import datetime, timedelta
 import matplotlib
 matplotlib.use('Agg')
@@ -21,6 +22,10 @@ def load_station_names(bp_path):
     return names
 
 def main():
+    parser = argparse.ArgumentParser(description="Plot flow data charts")
+    parser.add_argument("--days", type=int, default=61, help="Number of days to look back (default: 61)")
+    args = parser.parse_args()
+
     bp_path = os.path.join(PARENT_DIR, "station_Flow_r1.bp")
     data_path = os.path.join(PARENT_DIR, "flow_output.txt")
 
@@ -28,6 +33,9 @@ def main():
     if not station_names:
         print("No stations found in bp file")
         return
+
+    now = datetime.now()
+    start_edt = (now - timedelta(days=args.days)).replace(hour=0, minute=0, second=0, microsecond=0)
 
     timestamps = []
     station_data = [[] for _ in station_names]
@@ -38,7 +46,7 @@ def main():
             if len(parts) < 1 + len(station_names):
                 continue
             total_seconds = int(parts[0])
-            dt = datetime(2000, 1, 1) + timedelta(seconds=total_seconds)
+            dt = start_edt + timedelta(seconds=total_seconds)
             timestamps.append(dt)
             for i, name in enumerate(station_names):
                 station_data[i].append(float(parts[i + 1]))
@@ -50,9 +58,9 @@ def main():
     for i, name in enumerate(station_names):
         fig, ax = plt.subplots(figsize=(14, 5))
         ax.plot(timestamps, station_data[i], linewidth=0.6, color='tab:blue')
-        ax.set_xlabel('Time')
+        ax.set_xlabel('Time (EDT)')
         ax.set_ylabel('Flow (CMS)')
-        ax.set_title(f'{name} - Flow Data (61 days)')
+        ax.set_title(f'{name} - Flow Data ({args.days} days)')
         ax.grid(True, alpha=0.3)
         plt.xticks(rotation=45)
         plt.tight_layout()
