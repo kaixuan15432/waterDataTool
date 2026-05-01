@@ -41,38 +41,47 @@ def fetch_api_data(api_id, target_dt, start_date_str="20260101", end_date_str="2
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
-    
-    target_hour = target_dt.hour - 4
-    if target_hour < 0:
-        target_hour += 24
-    
+
+    target_date_edt = target_dt - timedelta(hours=4)
+
     try:
         req = urllib.request.Request(url)
         with urllib.request.urlopen(req, context=ctx, timeout=60) as response:
             api_data = json.loads(response.read().decode())
-        
+
         if api_data and "timeseries" in api_data and len(api_data["timeseries"]) > 0:
             ts = api_data["timeseries"][0]
             if ts and "values" in ts:
                 values = ts["values"]
+                hourly_val = None
+                daily_val = None
                 for v in values:
                     ts_val = v["x"]
                     if isinstance(ts_val, int):
                         dt = datetime.utcfromtimestamp(ts_val / 1000)
                     else:
                         dt = datetime.fromisoformat(str(ts_val).replace("Z", "").replace("+00:00", ""))
-                    
-                    if dt.year == target_dt.year and dt.month == target_dt.month and dt.day == target_dt.day and dt.hour == target_hour:
-                        y_val = v.get("y")
-                        if y_val is None:
-                            y_str = v.get("yStr")
-                            if y_str:
-                                return y_str
-                        else:
-                            return y_val
+
+                    freq = v.get("frequency", "")
+                    y_val = v.get("y")
+                    if y_val is None:
+                        y_str = v.get("yStr")
+                        y_val = y_str if y_str else None
+
+                    if freq == "DA":
+                        if daily_val is None and dt.year == target_date_edt.year and dt.month == target_date_edt.month and dt.day == target_date_edt.day:
+                            daily_val = y_val
+                    else:
+                        if hourly_val is None and dt.year == target_dt.year and dt.month == target_dt.month and dt.day == target_dt.day and dt.hour == target_dt.hour:
+                            hourly_val = y_val
+
+                if hourly_val is not None:
+                    return hourly_val
+                if daily_val is not None:
+                    return daily_val
     except Exception as e:
         print(f"Error fetching {api_id}: {e}")
-    return None
+        return None
 
 def parse_time_input(time_str):
     time_str = time_str.strip()
@@ -93,11 +102,11 @@ def main():
     
     target_dt = parse_time_input(args.time)
     target_hour_utc = target_dt.hour + 4
-    
+
     if target_hour_utc >= 24:
-        target_hour_utc = target_hour_utc - 24
-        target_dt = target_dt.replace(day=target_dt.day + 1)
-    
+        target_hour_utc -= 24
+        target_dt = target_dt + timedelta(days=1)
+
     target_dt = target_dt.replace(hour=target_hour_utc, minute=0, second=0, microsecond=0)
     
     if args.start and args.end:
@@ -115,45 +124,44 @@ def main():
     
     bp_file = os.path.join(SCRIPT_DIR, "DBHYDRO_salinity-1.bp")
     stations = load_stations_from_file(bp_file)
-    
+
     temp_file = os.path.join(SCRIPT_DIR, "DBHYDRO_temp.bp")
     temp_stations = load_stations_from_file(temp_file)
-    temp_stations_dict = {s["name"]: s["api_id"] for s in temp_stations if s["api_id"]}
-    
-    print(f"Loaded {len(stations)} stations")
+
+    print(f"Loaded {len(stations)} salinity stations")
     print(f"Loaded {len(temp_stations)} temperature stations")
-    
-    results = []
+
+    salinity_results = []
     for station in stations:
-        lon = station["lon"]
-        lat = station["lat"]
-        
-        salinity_val = "0.00"
-        temp_val = "0.00"
-        
         salinity_api_id = station["api_id"]
         if salinity_api_id:
             fetched_val = fetch_api_data(salinity_api_id, target_dt, start_str, end_str)
             if fetched_val is not None:
-                salinity_val = fetched_val
+                salinity_results.append((args.time, station["name"], station["lon"], station["lat"], fetched_val))
             else:
                 print(f"No salinity data for {station['name']} ({salinity_api_id})")
-        
-        temp_api_id = temp_stations_dict.get(station["name"], "") if station["name"] else ""
+
+    temp_results = []
+    for station in temp_stations:
+        temp_api_id = station["api_id"]
         if temp_api_id:
             fetched_val = fetch_api_data(temp_api_id, target_dt, start_str, end_str)
             if fetched_val is not None:
-                temp_val = fetched_val
+                temp_results.append((args.time, station["name"], station["lon"], station["lat"], fetched_val))
             else:
                 print(f"No temperature data for {station['name']} ({temp_api_id})")
-        
-        results.append((station["seq"], lon, lat, salinity_val, temp_val))
-    
-    output_file = os.path.join(SCRIPT_DIR, "output.txt")
-    with open(output_file, "w") as f:
-        for seq, lon, lat, sal, temp in results:
-            f.write(f"{seq} {lon} {lat} {sal} {temp}\n")
-    print(f"Output written to {output_file}")
+
+    sal_file = os.path.join(SCRIPT_DIR, "output_salinity.txt")
+    with open(sal_file, "w") as f:
+        for time_str, name, lon, lat, sal in salinity_results:
+            f.write(f"{time_str} {name} {lon} {lat} {sal}\n")
+    print(f"Salinity output written to {sal_file} ({len(salinity_results)} stations)")
+
+    temp_file_out = os.path.join(SCRIPT_DIR, "output_temperature.txt")
+    with open(temp_file_out, "w") as f:
+        for time_str, name, lon, lat, temp in temp_results:
+            f.write(f"{time_str} {name} {lon} {lat} {temp}\n")
+    print(f"Temperature output written to {temp_file_out} ({len(temp_results)} stations)")
 
 if __name__ == "__main__":
     main()
