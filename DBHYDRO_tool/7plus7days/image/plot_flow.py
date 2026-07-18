@@ -23,7 +23,9 @@ def load_station_names(bp_path):
 
 def main():
     parser = argparse.ArgumentParser(description="Plot flow data charts")
-    parser.add_argument("--days", type=int, default=61, help="Number of days to look back (default: 61)")
+    parser.add_argument("--days", type=int, default=None, help="Number of days to look back (default: 61)")
+    parser.add_argument("--start", type=str, default=None, help="Start date in YYYY-MM-DD format")
+    parser.add_argument("--end", type=str, default=None, help="End date in YYYY-MM-DD format")
     args = parser.parse_args()
 
     bp_path = os.path.join(PARENT_DIR, "station_Flow_r1.bp")
@@ -35,7 +37,22 @@ def main():
         return
 
     now = datetime.now()
-    start_edt = (now - timedelta(days=args.days)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    if args.start and args.end:
+        start_edt = datetime.strptime(args.start, "%Y-%m-%d").replace(hour=0, minute=0, second=0, microsecond=0)
+        end_edt = datetime.strptime(args.end, "%Y-%m-%d").replace(hour=23, minute=0, second=0, microsecond=0)
+        days = (end_edt.date() - start_edt.date()).days + 1
+    elif args.start:
+        start_edt = datetime.strptime(args.start, "%Y-%m-%d").replace(hour=0, minute=0, second=0, microsecond=0)
+        end_edt = now.replace(hour=23, minute=0, second=0, microsecond=0)
+        days = (end_edt.date() - start_edt.date()).days + 1
+    elif args.end:
+        end_edt = datetime.strptime(args.end, "%Y-%m-%d").replace(hour=23, minute=0, second=0, microsecond=0)
+        days = args.days or 61
+        start_edt = (end_edt - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    else:
+        days = args.days or 61
+        start_edt = (now - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
 
     timestamps = []
     station_data = [[] for _ in station_names]
@@ -60,7 +77,7 @@ def main():
         ax.plot(timestamps, station_data[i], linewidth=0.6, color='tab:blue')
         ax.set_xlabel('Time (EDT)')
         ax.set_ylabel('Flow (CMS)')
-        ax.set_title(f'{name} - Flow Data ({args.days} days)')
+        ax.set_title(f'{name} - Flow Data ({start_edt.strftime("%Y-%m-%d")} ~)')
         ax.grid(True, alpha=0.3)
         plt.xticks(rotation=45)
         plt.tight_layout()

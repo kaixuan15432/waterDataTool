@@ -105,15 +105,32 @@ def generate_chart(station_name, values, temp_dir):
 
 def main():
     parser = argparse.ArgumentParser(description="Fetch flow data from SFWMD DBHYDRO API")
-    parser.add_argument("--days", type=int, default=61, help="Number of days to look back (default: 61)")
+    parser.add_argument("--days", type=int, default=None, help="Number of days to look back (default: 61)")
+    parser.add_argument("--start", type=str, default=None, help="Start date in YYYY-MM-DD format")
+    parser.add_argument("--end", type=str, default=None, help="End date in YYYY-MM-DD format")
     parser.add_argument("--png", action="store_true", help="Generate PNG charts")
     args = parser.parse_args()
 
     EDT_OFFSET = 4
 
     now = datetime.now()
-    end_edt = now.replace(hour=23, minute=0, second=0, microsecond=0)
-    start_edt = (now - timedelta(days=args.days)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    if args.start and args.end:
+        start_edt = datetime.strptime(args.start, "%Y-%m-%d").replace(hour=0, minute=0, second=0, microsecond=0)
+        end_edt = datetime.strptime(args.end, "%Y-%m-%d").replace(hour=23, minute=0, second=0, microsecond=0)
+        days = (end_edt.date() - start_edt.date()).days + 1
+    elif args.start:
+        start_edt = datetime.strptime(args.start, "%Y-%m-%d").replace(hour=0, minute=0, second=0, microsecond=0)
+        end_edt = now.replace(hour=23, minute=0, second=0, microsecond=0)
+        days = (end_edt.date() - start_edt.date()).days + 1
+    elif args.end:
+        end_edt = datetime.strptime(args.end, "%Y-%m-%d").replace(hour=23, minute=0, second=0, microsecond=0)
+        days = args.days or 61
+        start_edt = (end_edt - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    else:
+        days = args.days or 61
+        end_edt = now.replace(hour=23, minute=0, second=0, microsecond=0)
+        start_edt = (now - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
 
     start_utc = start_edt - timedelta(hours=EDT_OFFSET)
     end_utc = end_edt - timedelta(hours=EDT_OFFSET)
